@@ -53,13 +53,36 @@ class RemoteSequential(nn.Module):
         assert inputs.ndim == 3, "inputs must be a tensor of shape [batch_size, seq_length, hidden_size]"
         print('client remote sequential self.active_session ', self.active_session)
         if self.active_session is None:
-            assert all(v is None for v in kwargs.values()), f"Extra kwargs are not supported in forward: {kwargs}"
-            return _RemoteSequentialAutogradFunction.apply(inputs, prompts, self.sequence_manager)
-        else: # model.generate(sess=session) refer in remote_generation.py
-            # self.active_session : <petals.client.inference_session.InferenceSession object at xxxxx>
+            # Get model-specific supported kwargs based on model type
+            model_type = getattr(self.config, 'model_type', None)
+            if model_type == 'opt':
+                supported_kwargs = {
+                    'attention_mask', 'layer_head_mask', 'past_key_value',
+                    'output_attentions', 'use_cache', 'hypo_ids'
+                }
+                # Filter out None values to avoid unnecessary processing
+                kwargs = {k: v for k, v in kwargs.items() if v is not None}
+            else:
+                # For other models (llama, bloom, etc.), only allow hypo_ids
+                supported_kwargs = {'hypo_ids'}
+                # Keep only hypo_ids if present
+                kwargs = {'hypo_ids': kwargs.get('hypo_ids')} if 'hypo_ids' in kwargs else {}
+
+            unsupported_kwargs = set(kwargs.keys()) - supported_kwargs
+            if unsupported_kwargs:
+                if model_type == 'opt':
+                    # For OPT, we want to know about unsupported kwargs
+                    raise ValueError(f"Unsupported kwargs in forward for OPT model: {unsupported_kwargs}")
+                else:
+                    # For other models, silently ignore unsupported kwargs
+                    kwargs = {k: v for k, v in kwargs.items() if k in supported_kwargs}
+
+            # Pack kwargs into a dictionary to pass as a single argument
+            kwargs_dict = kwargs if kwargs else {}
+            return _RemoteSequentialAutogradFunction.apply(inputs, prompts, self.sequence_manager, kwargs_dict)
+        else:
             print('start client remote sequential self.active_session .step()')
-            # print('**kwargs ', kwargs) #  {'hypo_ids': None}
-            return self.active_session.step(inputs, prompts, **kwargs) # start the model.transformer.h.inference_session
+            return self.active_session.step(inputs, prompts, **kwargs)
 
     @property
     def active_session(self) -> Optional[InferenceSession]:

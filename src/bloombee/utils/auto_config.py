@@ -25,8 +25,9 @@ _CLASS_MAPPING = {}  # Populated by bloombee.models.* subpackages with register_
 def register_model_classes(*, config: Type[PretrainedConfig], **kwargs):
     assert issubclass(config, PretrainedConfig)
     assert config.model_type not in _CLASS_MAPPING, f"Model type {config.model_type} is already registered"
-
+    
     _CLASS_MAPPING[config.model_type] = _ModelClasses(config=config, **kwargs)
+    # print('register_model_classes: config.model_type ', config.model_type)
 
 
 class _AutoDistributedBase:
@@ -42,19 +43,28 @@ class _AutoDistributedBase:
             kwargs["use_auth_token"] = True
 
         config = AutoConfig.from_pretrained(model_name_or_path, *args, **kwargs)
+        # print('config ', config)
+        # print('config.model_type ', config.model_type)
+        # print('_CLASS_MAPPING ', _CLASS_MAPPING)
         if config.model_type not in _CLASS_MAPPING:
             raise ValueError(f"BloomBee does not support model type {config.model_type}")
 
         proper_cls = getattr(_CLASS_MAPPING[config.model_type], cls._mapping_field)
         if proper_cls is None:
-            raise ValueError(f"BloomBee does not have {cls.__name__} for model type {config.model_type}")
-
+            raise ValueError(f"bloombee does not have {cls.__name__} for model type {config.model_type}")
+        print('auto_config : model_name_or_path ', model_name_or_path)
+        # if model_name_or_path =="facebook/opt-350m":
+        #     model_name_or_path = "model-attribution-challenge/bloom-350m"
+        
+        # self.block_config.hidden_size=1024
+        # res = proper_cls.from_pretrained(model_name_or_path, *args, **kwargs)
+        # import pdb;pdb.set_trace()
         return proper_cls.from_pretrained(model_name_or_path, *args, **kwargs)
 
 
 class DefaultRevisionMixin:
     """
-    BloomBee only supports Falcon loaded in the new in-library format (transformers.FalconModel).
+    bloombee only supports Falcon loaded in the new in-library format (transformers.FalconModel).
     TII models were recently converted to this format but then reverted back due to compatibility issues.
     We chose to support only the new format since HF staff promised to eventually convert these models
     to the new format again, see https://huggingface.co/tiiuae/falcon-40b/discussions/90#64b4d23bf44fd957492f7602
